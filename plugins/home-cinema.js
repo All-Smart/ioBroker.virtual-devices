@@ -1,5 +1,7 @@
 'use strict';
 
+const { castToObjectType } = require('../lib/type-utils');
+
 /**
  * Home Cinema plugin.
  *
@@ -518,7 +520,8 @@ class HomeCinemaPlugin {
         if (ctx.inputs.sourceVolume) {
             const minVol = Number(ctx.config.sourceVolumeMin ?? 90);
             ctx.log.info(`Setting source volume to ${minVol}%`);
-            await ctx.adapter.setForeignStateAsync(ctx.inputs.sourceVolume, minVol, false);
+            const minVolCast = await castToObjectType(ctx.adapter, ctx.inputs.sourceVolume, minVol, ctx.log);
+            await ctx.adapter.setForeignStateAsync(ctx.inputs.sourceVolume, minVolCast, false);
         }
 
         // Execute powerOn chain
@@ -657,7 +660,8 @@ class HomeCinemaPlugin {
         await ctx.setOutputState('volume', clamped, true);
 
         if (ctx.inputs.amplifierVolume) {
-            await ctx.adapter.setForeignStateAsync(ctx.inputs.amplifierVolume, clamped, false);
+            const volCast = await castToObjectType(ctx.adapter, ctx.inputs.amplifierVolume, clamped, ctx.log);
+            await ctx.adapter.setForeignStateAsync(ctx.inputs.amplifierVolume, volCast, false);
             ctx.log.debug(`Volume set to ${clamped}%`);
         }
     }
@@ -672,7 +676,8 @@ class HomeCinemaPlugin {
         await ctx.setOutputState('mute', muted, true);
 
         if (ctx.inputs.amplifierMute) {
-            await ctx.adapter.setForeignStateAsync(ctx.inputs.amplifierMute, muted, false);
+            const muteCast = await castToObjectType(ctx.adapter, ctx.inputs.amplifierMute, muted, ctx.log);
+            await ctx.adapter.setForeignStateAsync(ctx.inputs.amplifierMute, muteCast, false);
             ctx.log.debug(`Mute set to ${muted}`);
         }
     }
@@ -707,7 +712,8 @@ class HomeCinemaPlugin {
         } else if (ctx.inputs.screenPosition) {
             // Fallback: direct write using config values
             const value = parseConfigValue(down ? (ctx.config.screenDownValue ?? '0') : (ctx.config.screenUpValue ?? '100'));
-            await ctx.adapter.setForeignStateAsync(ctx.inputs.screenPosition, value, false);
+            const valueCast = await castToObjectType(ctx.adapter, ctx.inputs.screenPosition, value, ctx.log);
+            await ctx.adapter.setForeignStateAsync(ctx.inputs.screenPosition, valueCast, false);
         }
 
         await ctx.setOutputState('screen', down, true);

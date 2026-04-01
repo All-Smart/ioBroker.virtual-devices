@@ -1,5 +1,7 @@
 'use strict';
 
+const { castToObjectType } = require('../lib/type-utils');
+
 /**
  * Conditional Switch plugin.
  *
@@ -320,10 +322,12 @@ class ConditionalSwitchPlugin {
 
     async _setSwitches(ctx, on) {
         if (ctx.inputs.switch1) {
-            await ctx.adapter.setForeignStateAsync(ctx.inputs.switch1, on, false);
+            const val1 = await castToObjectType(ctx.adapter, ctx.inputs.switch1, on, ctx.log);
+            await ctx.adapter.setForeignStateAsync(ctx.inputs.switch1, val1, false);
         }
         if (ctx.inputs.switch2) {
-            await ctx.adapter.setForeignStateAsync(ctx.inputs.switch2, on, false);
+            const val2 = await castToObjectType(ctx.adapter, ctx.inputs.switch2, on, ctx.log);
+            await ctx.adapter.setForeignStateAsync(ctx.inputs.switch2, val2, false);
         }
     }
 }

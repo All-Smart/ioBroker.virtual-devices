@@ -1,5 +1,7 @@
 'use strict';
 
+const { castToObjectType } = require('../lib/type-utils');
+
 /**
  * Smart Dehumidifier plugin.
  *
@@ -543,7 +545,8 @@ class SmartDehumidifierPlugin {
         rt.commandedOn = on;
 
         if (ctx.inputs.powerSwitch) {
-            await ctx.adapter.setForeignStateAsync(ctx.inputs.powerSwitch, on, false);
+            const valCast = await castToObjectType(ctx.adapter, ctx.inputs.powerSwitch, on, ctx.log);
+            await ctx.adapter.setForeignStateAsync(ctx.inputs.powerSwitch, valCast, false);
         }
 
         await ctx.setOutputState('running', on, true);
