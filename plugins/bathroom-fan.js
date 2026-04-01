@@ -10,9 +10,11 @@
  * 1. **Humidity trigger:** When humidity > threshold → fan ON. When humidity < threshold - hysteresis → fan OFF.
  * 2. **Presence trigger:** When presence == activeValue AND door == closedValue → fan ON.
  *    When either condition breaks → fan OFF.
- * 3. **Priority:** If both triggers are active and a speed value is configured,
- *    the higher value wins (fanSpeedValue for humidity, fanOnValue for presence).
+ * 3. **Priority:** If both triggers are active, the ON chain runs (single chain for both triggers).
  * 4. **Off-delay:** After all triggers clear, the fan runs for `offDelay` more seconds.
+ *
+ * The ON and OFF action chains define which datapoints get written (and with which value).
+ * Configure at least one step in each chain — typically your fan’s switch/level datapoint.
  *
  * All actuator values are configurable (no boolean/type assumptions).
  *
@@ -28,7 +30,7 @@
  * @property {boolean}     humidityTrigger  - Humidity condition is active.
  * @property {boolean}     presenceTrigger  - Presence+door condition is active.
  * @property {ReturnType<typeof setTimeout>|null} offTimer - Delayed-off timer handle.
- * @property {any}         lastCommandValue - Last value written to fanCommand.
+ * @property {boolean|null} lastCommandWasOn - Whether the last command turned the fan on.
  * @property {import('../lib/action-chain').ActionChainExecutor|null} activeChainExecutor - Currently running chain.
  */
 
@@ -42,7 +44,7 @@ const runtimeState = new Map();
 function getRuntime(deviceId) {
     let s = runtimeState.get(deviceId);
     if (!s) {
-        s = { humidityTrigger: false, presenceTrigger: false, offTimer: null, lastCommandValue: null, activeChainExecutor: null };
+        s = { humidityTrigger: false, presenceTrigger: false, offTimer: null, lastCommandWasOn: null, activeChainExecutor: null };
         runtimeState.set(deviceId, s);
     }
     return s;
@@ -123,19 +125,6 @@ class BathroomFanPlugin {
                 },
             },
             {
-                id: 'fanCommand',
-                name: { en: 'Fan Command', de: 'Lüfter Befehl' },
-                description: {
-                    en: 'Command datapoint to control the fan (write)',
-                    de: 'Befehls-Datenpunkt zum Steuern des Lüfters (schreibend)',
-                },
-                required: true,
-                filter: {
-                    type: 'state',
-                    common: { type: 'number' },
-                },
-            },
-            {
                 id: 'fanStatus',
                 name: { en: 'Fan Status', de: 'Lüfter Status' },
                 description: {
@@ -186,18 +175,6 @@ class BathroomFanPlugin {
                 min: 1,
                 max: 20,
             },
-            fanOnValue: {
-                type: 'text',
-                label: { en: 'Fan ON value (command)', de: 'Lüfter AN Wert (Befehl)' },
-            },
-            fanOffValue: {
-                type: 'text',
-                label: { en: 'Fan OFF value (command)', de: 'Lüfter AUS Wert (Befehl)' },
-            },
-            fanSpeedValue: {
-                type: 'text',
-                label: { en: 'Fan speed value (optional, for humidity)', de: 'Lüfter Drehzahl-Wert (optional, für Feuchtigkeit)' },
-            },
             statusOnValue: {
                 type: 'text',
                 label: { en: 'Status ON value', de: 'Status AN Wert' },
@@ -226,9 +203,6 @@ class BathroomFanPlugin {
         this.configDefaults = {
             humidityThreshold: 65,
             humidityHysteresis: 5,
-            fanOnValue: '1',
-            fanOffValue: '0',
-            fanSpeedValue: '',
             statusOnValue: '1',
             statusOffValue: '0',
             presenceActiveValue: 'true',
@@ -242,11 +216,17 @@ class BathroomFanPlugin {
         this.actionChainSlots = {
             on: {
                 name: { en: 'ON Chain', de: 'AN-Kette' },
-                description: { en: 'Commands to turn the fan on (executed sequentially)', de: 'Befehle zum Einschalten des Lüfters (sequentiell ausgeführt)' },
+                description: {
+                    en: 'Datapoints to set when the fan turns on. Add one row per datapoint — e.g. your fan channel with value 1. Steps are executed in order.',
+                    de: 'Datenpunkte die beim Einschalten gesetzt werden. Pro Zeile ein Datenpunkt — z.B. den Lüfter-Kanal mit Wert 1. Schritte werden der Reihe nach ausgeführt.',
+                },
             },
             off: {
                 name: { en: 'OFF Chain', de: 'AUS-Kette' },
-                description: { en: 'Commands to turn the fan off (executed sequentially)', de: 'Befehle zum Ausschalten des Lüfters (sequentiell ausgeführt)' },
+                description: {
+                    en: 'Datapoints to set when the fan turns off (after the off-delay). Add one row per datapoint — e.g. your fan channel with value 0.',
+                    de: 'Datenpunkte die beim Ausschalten gesetzt werden (nach der Nachlaufzeit). Pro Zeile ein Datenpunkt — z.B. den Lüfter-Kanal mit Wert 0.',
+                },
             },
         };
 
@@ -298,7 +278,7 @@ class BathroomFanPlugin {
         rt.humidityTrigger = false;
         rt.presenceTrigger = false;
         rt.offTimer = null;
-        rt.lastCommandValue = null;
+        rt.lastCommandWasOn = null;
 
         // Default output states
         await ctx.setOutputState('active', false, true);
@@ -344,9 +324,9 @@ class BathroomFanPlugin {
             case 'doorContact':
                 await this._evaluatePresence(ctx);
                 break;
-            case 'fanStatus':
+            case 'fanStatus': // optional — reflects real hardware state, no command logic
                 await this._updateActiveState(ctx, state.val);
-                return; // Status update only, no command logic
+                return;
         }
 
         await this._applyDesiredState(ctx);
@@ -467,51 +447,40 @@ class BathroomFanPlugin {
      */
     async _applyDesiredState(ctx) {
         const rt = getRuntime(ctx.deviceId);
-        const fanOnValue = parseConfigValue(ctx.config.fanOnValue ?? '1');
-        const fanOffValue = parseConfigValue(ctx.config.fanOffValue ?? '0');
-        const fanSpeedRaw = ctx.config.fanSpeedValue;
-        const hasSpeed = fanSpeedRaw !== '' && fanSpeedRaw !== null && fanSpeedRaw !== undefined;
-        const fanSpeedValue = hasSpeed ? parseConfigValue(fanSpeedRaw) : null;
         const offDelay = Number(ctx.config.offDelay ?? 120) * 1000;
 
-        // Determine desired value
-        let desiredValue = null;
+        // Determine desired state
+        let wantOn = false;
         let triggerName = 'none';
 
         if (rt.humidityTrigger && rt.presenceTrigger) {
             triggerName = 'both';
-            // Humidity gets speed, presence gets on — pick the higher value (numeric) or humidity wins
-            const humVal = fanSpeedValue !== null ? fanSpeedValue : fanOnValue;
-            if (typeof humVal === 'number' && typeof fanOnValue === 'number') {
-                desiredValue = Math.max(humVal, fanOnValue);
-            } else {
-                desiredValue = humVal; // Non-numeric: humidity trigger takes priority
-            }
+            wantOn = true;
         } else if (rt.humidityTrigger) {
             triggerName = 'humidity';
-            desiredValue = fanSpeedValue !== null ? fanSpeedValue : fanOnValue;
+            wantOn = true;
         } else if (rt.presenceTrigger) {
             triggerName = 'presence';
-            desiredValue = fanOnValue;
+            wantOn = true;
         }
 
         await ctx.setOutputState('trigger', triggerName, true);
 
-        if (desiredValue !== null) {
+        if (wantOn) {
             // Cancel any pending off-timer
             if (rt.offTimer) {
                 clearTimeout(rt.offTimer);
                 rt.offTimer = null;
             }
 
-            await this._sendFanCommand(ctx, desiredValue);
+            await this._sendFanCommand(ctx, true);
         } else {
             // All triggers off — start off-delay (or turn off immediately if delay=0)
-            if (rt.lastCommandValue !== null && !looseEquals(rt.lastCommandValue, fanOffValue)) {
+            if (rt.lastCommandWasOn !== false) {
                 if (rt.offTimer) return; // Already waiting
 
                 if (offDelay <= 0) {
-                    await this._sendFanCommand(ctx, fanOffValue);
+                    await this._sendFanCommand(ctx, false);
                 } else {
                     ctx.log.info(`All triggers cleared — off-delay ${offDelay / 1000}s started`);
                     rt.offTimer = setTimeout(async () => {
@@ -519,7 +488,7 @@ class BathroomFanPlugin {
                         // Re-check triggers (they may have re-activated during delay)
                         if (!rt.humidityTrigger && !rt.presenceTrigger) {
                             ctx.log.info(`Off-delay elapsed — turning fan OFF`);
-                            await this._sendFanCommand(ctx, fanOffValue);
+                            await this._sendFanCommand(ctx, false);
                             await ctx.setOutputState('trigger', 'none', true);
                         }
                     }, offDelay);
@@ -529,18 +498,15 @@ class BathroomFanPlugin {
     }
 
     /**
-     * Build and execute an action chain to set the fan to the desired value.
-     *
-     * Uses `ctx.executeChain()` when available (plugin-interface level).
-     * Falls back to direct `setForeignStateAsync` for backward compatibility.
+     * Execute the ON or OFF action chain.
      *
      * @param {import('../lib/plugin-interface').PluginContext} ctx
-     * @param {any} value - The target command value.
+     * @param {boolean} on - true = execute ON chain, false = execute OFF chain.
      */
-    async _sendFanCommand(ctx, value) {
+    async _sendFanCommand(ctx, on) {
         const rt = getRuntime(ctx.deviceId);
 
-        if (rt.lastCommandValue === value) return; // No change needed
+        if (rt.lastCommandWasOn === on) return; // No change needed
 
         // Abort any running chain before starting a new one
         if (rt.activeChainExecutor) {
@@ -548,11 +514,17 @@ class BathroomFanPlugin {
             rt.activeChainExecutor = null;
         }
 
-        rt.lastCommandValue = value;
+        rt.lastCommandWasOn = on;
 
-        const chain = this._buildChain(ctx, value);
+        const chain = this._buildChain(ctx, on);
 
-        if (chain.length > 0 && typeof ctx.executeChain === 'function') {
+        if (chain.length === 0) {
+            ctx.log.warn(`Fan "${ctx.deviceId}": ${on ? 'ON' : 'OFF'} chain is empty — no datapoints configured. Nothing sent.`);
+            await ctx.setOutputState('active', on, true);
+            return;
+        }
+
+        if (typeof ctx.executeChain === 'function') {
             try {
                 rt.activeChainExecutor = await ctx.executeChain(chain);
             } catch (e) {
@@ -564,53 +536,30 @@ class BathroomFanPlugin {
             } finally {
                 rt.activeChainExecutor = null;
             }
-        } else if (ctx.inputs.fanCommand) {
-            // Fallback: direct write (no chain support or single-step)
-            await ctx.adapter.setForeignStateAsync(ctx.inputs.fanCommand, value, false);
         }
 
-        const isOn = !looseEquals(value, ctx.config.fanOffValue ?? '0');
-        await ctx.setOutputState('active', isOn, true);
-
-        ctx.log.info(`Fan command: ${value} (active=${isOn})`);
+        await ctx.setOutputState('active', on, true);
+        ctx.log.info(`Fan ${on ? 'ON' : 'OFF'} chain executed`);
     }
 
     /**
-     * Build an action chain for the given target value.
-     *
-     * If user-configured chains exist (ctx.chains.on / ctx.chains.off),
-     * use those. Otherwise fall back to single-step fanCommand.
+     * Return the configured ON or OFF action chain.
      *
      * @param {import('../lib/plugin-interface').PluginContext} ctx
-     * @param {any} value
+     * @param {boolean} on
      * @returns {import('../lib/plugin-interface').ActionChain}
      */
-    _buildChain(ctx, value) {
-        const fanOffValue = parseConfigValue(ctx.config.fanOffValue ?? '0');
-        const isOn = !looseEquals(value, fanOffValue);
-        const slotId = isOn ? 'on' : 'off';
-
-        // Use user-configured chain if available
-        if (ctx.chains && ctx.chains[slotId] && ctx.chains[slotId].length > 0) {
+    _buildChain(ctx, on) {
+        const slotId = on ? 'on' : 'off';
+        if (ctx.chains && Array.isArray(ctx.chains[slotId])) {
             return ctx.chains[slotId];
         }
-
-        // Fallback: single-step chain using fanCommand input
-        /** @type {import('../lib/plugin-interface').ActionChain} */
-        const chain = [];
-
-        if (!ctx.inputs.fanCommand) return chain;
-
-        chain.push({
-            objectId: ctx.inputs.fanCommand,
-            value,
-        });
-
-        return chain;
+        return [];
     }
 
     /**
      * Update active output state based on fanStatus reading.
+     * fanStatus is optional — it reflects the real hardware state back into the virtual device.
      *
      * @param {import('../lib/plugin-interface').PluginContext} ctx
      * @param {any} statusVal
