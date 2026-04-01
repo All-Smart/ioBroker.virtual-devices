@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Device body -->
+  <rect x="6" y="8" width="12" height="14" rx="2"/>
+  <!-- Air vents (top) -->
+  <line x1="9" y1="8" x2="9" y2="6"/>
+  <line x1="12" y1="8" x2="12" y2="5"/>
+  <line x1="15" y1="8" x2="15" y2="6"/>
+  <!-- Water drops falling -->
+  <path d="M10 13 C10 11.5 12 11.5 12 13 C12 14.5 10 14.5 10 13"/>
+  <path d="M13 16 C13 14.5 15 14.5 15 16 C15 17.5 13 17.5 13 16"/>
+  <!-- Water collection tray -->
+  <path d="M7 20 L7 22 L17 22 L17 20"/>
+  <!-- Percentage symbol (humidity indicator) -->
+  <text x="9" y="19" font-size="4" stroke="none" fill="currentColor">%</text>
+</svg>

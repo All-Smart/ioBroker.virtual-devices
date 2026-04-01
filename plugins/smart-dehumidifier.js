@@ -82,6 +82,9 @@ class SmartDehumidifierPlugin {
             de: 'Automatische Entfeuchtersteuerung mit Feuchtigkeitsziel, Tank-voll-Erkennung und Leistungsüberwachung',
         };
 
+        /** @type {string} */
+        this.icon = 'icons/smart-dehumidifier.svg';
+
         // -- Input slots -------------------------------------------------------
 
         /** @type {import('../lib/plugin-interface').InputSlot[]} */

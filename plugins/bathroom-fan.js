@@ -107,6 +107,9 @@ class BathroomFanPlugin {
             de: 'Automatische Badlüfter-Steuerung über Feuchtigkeit und Präsenz mit konfigurierbaren Aktor-Werten',
         };
 
+        /** @type {string} */
+        this.icon = 'icons/bathroom-fan.svg';
+
         // -- Input slots -------------------------------------------------------
 
         /** @type {import('../lib/plugin-interface').InputSlot[]} */

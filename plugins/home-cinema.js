@@ -105,6 +105,9 @@ class HomeCinemaPlugin {
             de: 'Orchestriert Display, Leinwand, Verstärker und Medienquelle als einzelnes Kino-Gerät mit Sprachassistenten-Unterstützung',
         };
 
+        /** @type {string} */
+        this.icon = 'icons/home-cinema.svg';
+
         // -- Input slots -------------------------------------------------------
 
         /** @type {import('../lib/plugin-interface').InputSlot[]} */

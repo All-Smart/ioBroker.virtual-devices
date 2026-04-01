@@ -77,6 +77,9 @@ class ConditionalSwitchPlugin {
             de: 'Regelbasierter Schalter mit flexiblen Bedingungen und optionalem Modifier',
         };
 
+        /** @type {string} */
+        this.icon = 'icons/conditional-switch.svg';
+
         // -- Input slots (only switches + modifier — conditions are dynamic) ---
 
         this.inputSlots = [
