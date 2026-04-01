@@ -131,11 +131,8 @@ class BathroomFanPlugin {
                     en: 'Status datapoint that reports the current fan state (read)',
                     de: 'Status-Datenpunkt der den aktuellen Lüfter-Zustand meldet (lesend)',
                 },
-                required: true,
-                filter: {
-                    type: 'state',
-                    common: { type: 'number' },
-                },
+                required: false,
+                filter: { type: 'state' },
             },
             {
                 id: 'presenceSensor',
