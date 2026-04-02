@@ -191,6 +191,32 @@ class HomeCinemaPlugin {
                     common: { type: 'number' },
                 },
             },
+            {
+                id: 'triggerPowerOn',
+                name: { en: 'Trigger Power ON', de: 'Trigger Einschalten' },
+                description: {
+                    en: 'A button or switch datapoint that triggers power-on when set to true (e.g. remote control button)',
+                    de: 'Ein Taster oder Schalter-Datenpunkt, der beim Setzen auf true das Einschalten auslöst (z.B. Fernbedienungs-Taste)',
+                },
+                required: false,
+                filter: {
+                    type: 'state',
+                    common: { type: 'boolean' },
+                },
+            },
+            {
+                id: 'triggerPowerOff',
+                name: { en: 'Trigger Power OFF', de: 'Trigger Ausschalten' },
+                description: {
+                    en: 'A button or switch datapoint that triggers power-off when set to true (e.g. remote control button)',
+                    de: 'Ein Taster oder Schalter-Datenpunkt, der beim Setzen auf true das Ausschalten auslöst (z.B. Fernbedienungs-Taste)',
+                },
+                required: false,
+                filter: {
+                    type: 'state',
+                    common: { type: 'boolean' },
+                },
+            },
         ];
 
         // -- Config schema -----------------------------------------------------
@@ -411,6 +437,20 @@ class HomeCinemaPlugin {
 
             case 'sourceVolume':
                 ctx.log.debug(`Source volume changed to ${state.val}`);
+                break;
+
+            case 'triggerPowerOn':
+                if (state.val === true || state.val === 1) {
+                    ctx.log.info('triggerPowerOn fired — powering on cinema');
+                    await this._handlePower(ctx, true);
+                }
+                break;
+
+            case 'triggerPowerOff':
+                if (state.val === true || state.val === 1) {
+                    ctx.log.info('triggerPowerOff fired — powering off cinema');
+                    await this._handlePower(ctx, false);
+                }
                 break;
         }
     }
